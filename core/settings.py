@@ -28,7 +28,9 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['krishnapathak-web-backend.onrender.com']
 
-
+CSRF_TRUSTED_ORIGINS = [
+    "https://krishnapathak-web-backend.onrender.com"
+]
 # Application definition
 
 INSTALLED_APPS = [
