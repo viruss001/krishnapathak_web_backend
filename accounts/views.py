@@ -20,6 +20,11 @@ from .serializers import VerifyOtpSerializer
 # -------------------- SIGNUP --------------------
 
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from django.contrib.auth.models import User
+
 class SignupView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -27,16 +32,32 @@ class SignupView(APIView):
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
+        first_name = request.data.get("first_name")
+        last_name = request.data.get("last_name")
 
-        if not all([email, password]):
-            return Response({"error": "Email and password are required"}, status=400)
+        # Validate required fields
+        if not all([email, password, first_name, last_name]):
+            return Response({"error": "Email, password, first name, and last name are required."}, status=400)
 
+        # Check if email already exists
         if User.objects.filter(email=email).exists():
-            return Response({"error": "Email already registered"}, status=400)
+            return Response({"error": "Email already registered."}, status=400)
 
+        # Use email prefix as username (or generate something unique)
         username = email.split("@")[0]
-        User.objects.create_user(username=username, email=email, password=password)
-        return Response({"message": "User created successfully"}, status=201)
+
+        # Create user
+        User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name
+        )
+
+        return Response({
+            "message": "User created successfully",
+        }, status=201)
 
 
 # -------------------- LOGIN (Step 1: Send OTP) --------------------
