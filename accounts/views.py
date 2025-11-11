@@ -3,27 +3,16 @@ from django.contrib.auth.models import User
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
-from django.utils import timezone
-from datetime import timedelta
 from django.conf import settings
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
-
 import jwt
 
-from .models import UserToken, Otp
+from .models import UserToken
 from .utils import generate_jwt_for_superuser
-from utils import otp, sendmail
-from .serializers import VerifyOtpSerializer
 
 
 # -------------------- SIGNUP --------------------
-
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
-from django.contrib.auth.models import User
 
 class SignupView(APIView):
     permission_classes = [AllowAny]
@@ -35,18 +24,14 @@ class SignupView(APIView):
         first_name = request.data.get("first_name")
         last_name = request.data.get("last_name")
 
-        # Validate required fields
         if not all([email, password, first_name, last_name]):
             return Response({"error": "Email, password, first name, and last name are required."}, status=400)
 
-        # Check if email already exists
         if User.objects.filter(email=email).exists():
             return Response({"error": "Email already registered."}, status=400)
 
-        # Use email prefix as username (or generate something unique)
         username = email.split("@")[0]
 
-        # Create user
         User.objects.create_user(
             username=username,
             email=email,
@@ -55,12 +40,10 @@ class SignupView(APIView):
             last_name=last_name
         )
 
-        return Response({
-            "message": "User created successfully",
-        }, status=201)
+        return Response({"message": "User created successfully"}, status=201)
 
 
-# -------------------- LOGIN (Step 1: Send OTP) --------------------
+# -------------------- LOGIN --------------------
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -83,62 +66,18 @@ class LoginView(APIView):
         if user is None:
             return Response({"error": "Invalid credentials"}, status=401)
 
-        otp_code = otp.generate_otp()
-        Otp.objects.update_or_create(
-            email=email,
-            defaults={"otp": otp_code, "exp": timezone.now() + timedelta(minutes=20)}
-        )
+        login(request, user)
 
-        sendmail.send_otp_email_task(email, otp_code)
+        # ✅ Generate JWT only if superuser
+        token = None
+        if user.is_superuser:
+            token = generate_jwt_for_superuser(user)
 
-        return Response({"message": "OTP sent to email"}, status=200)
-
-
-# -------------------- VERIFY OTP (Step 2: Issue JWT) --------------------
-
-class VerifyOtpView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def post(self, request):
-        serializer = VerifyOtpSerializer(data=request.data)
-        if serializer.is_valid():
-            email = serializer.validated_data["email"]
-            otp_code = serializer.validated_data["otp"]
-
-            try:
-                otp_entry = Otp.objects.get(email=email)
-            except Otp.DoesNotExist:
-                return Response({"error": "OTP not found"}, status=404)
-
-            if otp_entry.is_expired():
-                return Response({"error": "OTP expired"}, status=400)
-
-            if otp_entry.otp != otp_code:
-                return Response({"error": "Invalid OTP"}, status=400)
-
-            otp_entry.delete()
-
-            try:
-                user = User.objects.get(email=email)
-            except User.DoesNotExist:
-                return Response({"error": "User not found"}, status=404)
-
-            login(request, user)
-
-            # ✅ generate token for superuser
-            token = None
-            if user.is_superuser:
-                token = generate_jwt_for_superuser(user)
-
-            return Response({
-                "message": "Login successful",
-                "token": token,  # returned to frontend
-                "is_superuser": user.is_superuser
-            }, status=200)
-
-        print(serializer.errors)
-        return Response(serializer.errors, status=400)
+        return Response({
+            "message": "Login successful",
+            "is_superuser": user.is_superuser,
+            "token": token
+        }, status=200)
 
 
 # -------------------- LOGOUT --------------------
@@ -158,9 +97,7 @@ class LogoutView(APIView):
         return Response({"message": "Logged out successfully"}, status=200)
 
 
-
 # -------------------- CHECK USER (JWT VALIDATION) --------------------
-
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
