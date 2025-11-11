@@ -21,10 +21,10 @@ class SignupView(APIView):
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
-        first_name = request.data.get("first_name")
-        last_name = request.data.get("last_name")
+        first_name = request.data.get("name")
+        # last_name = request.data.get("last_name")
 
-        if not all([email, password, first_name, last_name]):
+        if not all([email, password, first_name]):
             return Response({"error": "Email, password, first name, and last name are required."}, status=400)
 
         if User.objects.filter(email=email).exists():
@@ -37,7 +37,7 @@ class SignupView(APIView):
             email=email,
             password=password,
             first_name=first_name,
-            last_name=last_name
+            # last_name=last_name
         )
 
         return Response({"message": "User created successfully"}, status=201)
